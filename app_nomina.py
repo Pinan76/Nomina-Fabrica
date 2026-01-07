@@ -87,7 +87,7 @@ with st.sidebar:
     try:
         st.image("logo.jpg", use_container_width=True)
     except:
-        st.warning("⚠️ Sin logo.png")
+        st.warning("⚠️ Sin logo.jpg")
         
     st.header("Configuración 2026")
     uma = st.number_input("UMA ($)", value=113.14)
@@ -160,3 +160,4 @@ if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
         k3.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
     else:
         st.error("Selecciona al menos 1 empleado.")
+
