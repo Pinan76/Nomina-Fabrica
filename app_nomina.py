@@ -81,7 +81,7 @@ def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prim
     }
 
 # --- 3. INTERFAZ GRÁFICA ---
-st.title("🏭 Tablero de Costos - Op. Trajes Españoles")
+st.title("🏭 Tablero de Costos - Operadora de Trajes Españoles")
 
 with st.sidebar:
     try:
@@ -160,4 +160,5 @@ if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
         k3.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
     else:
         st.error("Selecciona al menos 1 empleado.")
+
 
