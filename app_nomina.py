@@ -92,7 +92,7 @@ with st.sidebar:
     st.header("Configuración 2026")
     uma = st.number_input("UMA ($)", value=113.14)
     st.markdown("---")
-    smg = st.number_input("SM General ($)", value=316.04)
+    smg = st.number_input("SM General ($)", value=316.40)
     sm_cost = st.number_input("SM Costurero ($)", value=326.38)
     sm_plan = st.number_input("SM Planchador ($)", value=326.84)
     st.markdown("---")
@@ -160,5 +160,6 @@ if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
         k3.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
     else:
         st.error("Selecciona al menos 1 empleado.")
+
 
 
