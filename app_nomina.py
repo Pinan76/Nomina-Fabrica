@@ -1,123 +1,98 @@
 import streamlit as st
 import pandas as pd
+from PIL import Image
 
-# --- 1. CONFIGURACIÓN DE LA PÁGINA ---
+# --- 1. CONFIGURACIÓN ---
 st.set_page_config(
-    page_title="Tablero Nómina Fábrica 2026",
-    page_icon="🏭",
+    page_title="Op. Trajes Españoles",
+    page_icon="🧵",
     layout="wide"
 )
 
-# --- 2. MÓDULO FISCAL (ISR) ---
-def calcular_isr_mensual(base_gravable):
-    """Calcula ISR Mensual (Tarifa 2026 est)."""
-    tabla_isr = [
-        (0.01, 0.0, 0.0192),
-        (746.05, 14.32, 0.0640),
-        (6332.06, 371.83, 0.1088),
-        (11128.02, 893.63, 0.1600),
-        (12935.83, 1182.88, 0.1792),
-        (26988.51, 3701.24, 0.2136)
+# --- 2. LÓGICA FISCAL Y FINANCIERA ---
+def calcular_isr_mensual(base):
+    # Tabla ISR 2026 (Estimada)
+    tabla = [
+        (0.01, 0.0, 0.0192), (746.05, 14.32, 0.0640), (6332.06, 371.83, 0.1088),
+        (11128.02, 893.63, 0.1600), (12935.83, 1182.88, 0.1792), (26988.51, 3701.24, 0.2136)
     ]
     isr = 0.0
-    for limite, cuota, porc in tabla_isr:
-        if base_gravable >= limite:
-            excedente = base_gravable - limite
-            isr = cuota + (excedente * porc)
+    for lim, cuota, porc in tabla:
+        if base >= lim:
+            isr = cuota + ((base - lim) * porc)
         else:
             break
     return isr
 
-# --- 3. LÓGICA DE CÁLCULO FINANCIERO ---
-def calcular_fi(dias_aguinaldo, dias_vacaciones, prima_vacacional_tasa):
-    base = 365 + dias_aguinaldo + (dias_vacaciones * prima_vacacional_tasa)
-    return base / 365
+def calcular_fi(dias_ag, dias_vac, prima_vac):
+    return (365 + dias_ag + (dias_vac * prima_vac)) / 365
 
-def calcular_costo_master(puesto, cantidad, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prima):
-    """
-    Integra V1 (Operativo), V2 (Anuales) y V3 (Fiscal) en un solo registro.
-    """
+def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prima):
     dias_mes = 30.4
     
-    # --- A. CÁLCULOS MENSUALES ---
-    sueldo_mensual = sd * dias_mes
-    bono_mensual = (bono / 7) * dias_mes
-    nomina_bruta = sueldo_mensual + bono_mensual
+    # --- MENSUAL ---
+    bruto_men = (sd * dias_mes) + ((bono/7) * dias_mes)
+    isr_men = calcular_isr_mensual(bruto_men)
     
-    # ISR Trabajador
-    isr_mensual = calcular_isr_mensual(nomina_bruta)
-    sueldo_neto = nomina_bruta - isr_mensual # (Sin considerar retención IMSS obrero para simplificar)
-    
-    # Carga Social Patronal (Detalle V1)
-    sbc_fijo = sd * fi
-    sbc_variable = bono / 7
-    sbc_total = sbc_fijo + sbc_variable
-    
-    # Tope 25 UMA
+    sbc = (sd * fi) + (bono/7)
     tope = 25 * uma
-    if sbc_total > tope: sbc_total = tope
+    if sbc > tope: sbc = tope
     
-    # Desglose Carga Social
-    cuota_fija = (uma * 0.204) * dias_mes
-    excedente = (sbc_total - (3*uma))*0.011*dias_mes if sbc_total > (3*uma) else 0
-    ramas = sbc_total * (0.007 + 0.0105 + 0.0175 + 0.01 + 0.0113065) * dias_mes
-    retiro_cv = sbc_total * 0.065 * dias_mes
-    infonavit = sbc_total * 0.05 * dias_mes
+    cuota_patronal = (uma * 0.204 * dias_mes)
+    if sbc > (3*uma): cuota_patronal += (sbc - (3*uma)) * 0.011 * dias_mes
     
-    carga_social = cuota_fija + excedente + ramas + retiro_cv + infonavit
+    factor_ramas = 0.007 + 0.0105 + 0.0175 + 0.01 + 0.0113065 + 0.065 + 0.05
+    carga_social = cuota_patronal + (sbc * factor_ramas * dias_mes)
     
-    isn = nomina_bruta * tasa_isn
+    isn = bruto_men * tasa_isn
+    costo_men = bruto_men + carga_social + isn
     
-    costo_mensual = nomina_bruta + carga_social + isn
-
-    # --- B. CÁLCULOS ANUALES ---
-    # Aguinaldo
-    aguinaldo = sd * d_ag
-    # Prima
-    prima = sd * d_vac * t_prima
+    # --- ANUAL (DESGLOSE) ---
+    monto_aguinaldo = sd * d_ag
+    valor_vacaciones = sd * d_vac # Cuánto valen los días de vacaciones en dinero
+    monto_prima = valor_vacaciones * t_prima
     
-    # ISR Anual (Total retenido 12 meses + ajuste anualidades)
-    gravado_ag = max(0, aguinaldo - (30*uma))
-    gravado_pv = max(0, prima - (15*uma))
-    base_anual = nomina_bruta + gravado_ag + gravado_pv
-    isr_base_anual = calcular_isr_mensual(base_anual)
-    isr_extra = max(0, isr_base_anual - isr_mensual)
-    isr_total_anual = (isr_mensual * 12) + isr_extra
+    # ISR Anual
+    grav_ag = max(0, monto_aguinaldo - (30*uma))
+    grav_pv = max(0, monto_prima - (15*uma))
+    isr_anual_base = calcular_isr_mensual(bruto_men + grav_ag + grav_pv)
+    isr_extra = max(0, isr_anual_base - isr_men)
+    isr_total_anual = (isr_men * 12) + isr_extra
     
-    isn_anuales = (aguinaldo + prima) * tasa_isn
-    
-    costo_anual = (costo_mensual * 12) + aguinaldo + prima + isn_anuales
+    # Costo Total Anual
+    # Nota: 'valor_vacaciones' ya está incluido en los 12 meses de 'costo_men' (se pagan aunque descansen).
+    # Solo sumamos como EXTRA el Aguinaldo y la Prima.
+    isn_anuales = (monto_aguinaldo + monto_prima) * tasa_isn
+    costo_anual = (costo_men * 12) + monto_aguinaldo + monto_prima + isn_anuales
     
     return {
-        "Puesto": puesto,
-        "Cantidad": cantidad,
-        # V1: Datos Operativos
-        "SBC Diario": sbc_total,
-        "Nómina Bruta (Men)": nomina_bruta,
+        "Puesto": puesto, "Cantidad": cant,
+        "SBC Diario": sbc, "Nómina Bruta (Men)": bruto_men,
         "Carga Social IMSS (Men)": carga_social,
-        "ISN Estatal (Men)": isn,
-        # V3: Retenciones
-        "ISR a Retener (Men)": isr_mensual,
+        "Costo Mensual (Empresa)": costo_men,
+        # Columnas Nuevas Desglosadas:
+        "Aguinaldo (18 Días)": monto_aguinaldo,
+        "Valor Vacaciones": valor_vacaciones,
+        "Prima Vacacional": monto_prima,
+        # Finales
         "ISR Total Año (Trab)": isr_total_anual,
-        # Resultados Finales
-        "Costo Mensual (Empresa)": costo_mensual,
-        "Aguinaldo + Prima (Neto)": aguinaldo + prima,
         "COSTO ANUAL TOTAL": costo_anual,
-        # Totales para sumatorias
-        "Total_Grupo_Anual": costo_anual * cantidad,
-        "Total_ISR_Grupo": isr_total_anual * cantidad
+        "Total_Grupo": costo_anual * cant, "Total_ISR_Grupo": isr_total_anual * cant
     }
 
-# --- 4. INTERFAZ GRÁFICA ---
-
-st.title("🏭 Tablero de Costos de Fábrica (Master)")
-st.markdown("### Análisis Integral: Operativo + Fiscal + Pasivos")
+# --- 3. INTERFAZ GRÁFICA ---
+st.title("🏭 Tablero de Costos - Op. Trajes Españoles")
 
 with st.sidebar:
-    st.header("⚙️ Configuración 2026")
+    try:
+        st.image("logo.jpg", use_container_width=True)
+    except:
+        st.warning("⚠️ Sin logo.png")
+        
+    st.header("Configuración 2026")
     uma = st.number_input("UMA ($)", value=113.14)
     st.markdown("---")
-    smg = st.number_input("SM General ($)", value=315.04)
+    smg = st.number_input("SM General ($)", value=316.04)
     sm_cost = st.number_input("SM Costurero ($)", value=326.38)
     sm_plan = st.number_input("SM Planchador ($)", value=326.84)
     st.markdown("---")
@@ -128,60 +103,60 @@ with st.sidebar:
     
     fi = calcular_fi(d_ag, d_vac, t_prima)
 
-# Inputs en columnas
+st.subheader("Definición de Plantilla")
 c1, c2, c3 = st.columns(3)
-with c1:
-    n1_c = st.number_input("Cant. Ayudantes", 0, value=1)
-    n1_b = st.number_input("Bono Ayudante ($)", 0.0, value=350.0)
-with c2:
-    n2_c = st.number_input("Cant. Costureros", 0, value=1)
-    n2_b = st.number_input("Bono Costurero ($)", 0.0, value=500.0)
-with c3:
-    n3_c = st.number_input("Cant. Planchadores", 0, value=1)
-    n3_b = st.number_input("Bono Planchador ($)", 0.0, value=600.0)
+
+c1.info("1. Ayudante")
+n1_c = c1.number_input("Cant. Ayudantes", 0, value=1)
+n1_b = c1.number_input("Bono Ayudante ($)", 0.0, value=350.0)
+
+c2.success("2. Costurero")
+n2_c = c2.number_input("Cant. Costureros", 0, value=1)
+n2_b = c2.number_input("Bono Costurero ($)", 0.0, value=500.0)
+
+c3.warning("3. Planchador")
+n3_c = c3.number_input("Cant. Planchadores", 0, value=1)
+n3_b = c3.number_input("Bono Planchador ($)", 0.0, value=600.0)
 
 st.divider()
 
-if st.button("Generar Reporte Completo 🚀", type="primary", use_container_width=True):
-    
+if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
     data = []
+    if n1_c > 0: data.append(calcular_todo("1. Ayudante", n1_c, smg, n1_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
+    if n2_c > 0: data.append(calcular_todo("2. Costurero", n2_c, sm_cost, n2_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
+    if n3_c > 0: data.append(calcular_todo("3. Planchador", n3_c, sm_plan, n3_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
     
-    if n1_c > 0: data.append(calcular_costo_master("1. Ayudante", n1_c, smg, n1_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
-    if n2_c > 0: data.append(calcular_costo_master("2. Costurero", n2_c, sm_cost, n2_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
-    if n3_c > 0: data.append(calcular_costo_master("3. Planchador", n3_c, sm_plan, n3_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
-    
-    if len(data) > 0:
+    if data:
         df = pd.DataFrame(data)
         
-        # --- TABLA 1: ANÁLISIS MENSUAL DETALLADO (Regresan las columnas V1) ---
-        st.subheader("1. Detalle Operativo Mensual (Desglose)")
-        cols_mensual = [
-            "Puesto", "Cantidad", "SBC Diario", "Nómina Bruta (Men)", 
-            "Carga Social IMSS (Men)", "ISN Estatal (Men)", "Costo Mensual (Empresa)"
-        ]
-        df_men = df[cols_mensual].copy()
-        for c in cols_mensual[2:]: df_men[c] = df_men[c].map('${:,.2f}'.format)
+        st.subheader("1. Desglose Mensual (Operativo)")
+        cols_men = ["Puesto", "Cantidad", "SBC Diario", "Nómina Bruta (Men)", "Carga Social IMSS (Men)", "Costo Mensual (Empresa)"]
+        df_men = df[cols_men].copy()
+        for c in cols_men[2:]: df_men[c] = df_men[c].map('${:,.2f}'.format)
         st.dataframe(df_men, use_container_width=True)
         
-        # --- TABLA 2: ANÁLISIS FISCAL Y ANUAL (V2 y V3) ---
-        st.subheader("2. Impuestos y Pasivos Anuales")
-        cols_anual = [
-            "Puesto", "ISR a Retener (Men)", "ISR Total Año (Trab)", 
-            "Aguinaldo + Prima (Neto)", "COSTO ANUAL TOTAL"
+        st.subheader("2. Impuestos y Pasivos Anuales (Desglosados)")
+        # AQUI ESTAN LAS NUEVAS COLUMNAS SEPARADAS:
+        cols_an = [
+            "Puesto", 
+            "Aguinaldo (18 Días)", 
+            "Valor Vacaciones", 
+            "Prima Vacacional", 
+            "ISR Total Año (Trab)", 
+            "COSTO ANUAL TOTAL"
         ]
-        df_an = df[cols_anual].copy()
-        for c in cols_anual[1:]: df_an[c] = df_an[c].map('${:,.2f}'.format)
+        df_an = df[cols_an].copy()
+        for c in cols_an[1:]: df_an[c] = df_an[c].map('${:,.2f}'.format)
         st.dataframe(df_an, use_container_width=True)
         
-        # --- KPIs FINALES ---
-        total_gasto = df["Total_Grupo_Anual"].sum()
-        total_isr = df["Total_ISR_Grupo"].sum()
-        mensual_flow = (df["Costo Mensual (Empresa)"] * df["Cantidad"]).sum()
+        # Totales
+        gasto_total = df["Total_Grupo"].sum()
+        isr_total = df["Total_ISR_Grupo"].sum()
+        flujo_men = (df["Costo Mensual (Empresa)"] * df["Cantidad"]).sum()
         
         k1, k2, k3 = st.columns(3)
-        k1.metric("Flujo Mensual Requerido", f"${mensual_flow:,.2f}", "Salida de banco mes a mes")
-        k2.metric("ISR Retenido Anual", f"${total_isr:,.2f}", "Impuesto de trabajadores al SAT")
-        k3.metric("GASTO ANUAL TOTAL", f"${total_gasto:,.2f}", "Costo Real Fábrica")
-        
+        k1.metric("Flujo Mensual Requerido", f"${flujo_men:,.2f}")
+        k2.metric("ISR Retenido Anual", f"${isr_total:,.2f}")
+        k3.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
     else:
-        st.warning("Selecciona personal para calcular.")
+        st.error("Selecciona al menos 1 empleado.")
