@@ -108,15 +108,15 @@ c1, c2, c3 = st.columns(3)
 
 c1.info("1. Ayudante")
 n1_c = c1.number_input("Cant. Ayudantes", 0, value=1)
-n1_b = c1.number_input("Bono Ayudante ($)", 0.0, value=350.0)
+n1_b = c1.number_input("Bono Ayudante ($)", 0.0, value=226.0)
 
 c2.success("2. Costurero")
 n2_c = c2.number_input("Cant. Costureros", 0, value=1)
-n2_b = c2.number_input("Bono Costurero ($)", 0.0, value=500.0)
+n2_b = c2.number_input("Bono Costurero ($)", 0.0, value=339.0)
 
 c3.warning("3. Planchador")
 n3_c = c3.number_input("Cant. Planchadores", 0, value=1)
-n3_b = c3.number_input("Bono Planchador ($)", 0.0, value=600.0)
+n3_b = c3.number_input("Bono Planchador ($)", 0.0, value=339.0)
 
 st.divider()
 
@@ -160,6 +160,7 @@ if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
         k3.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
     else:
         st.error("Selecciona al menos 1 empleado.")
+
 
 
 
