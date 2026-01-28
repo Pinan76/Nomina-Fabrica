@@ -95,9 +95,9 @@ st.title("🏭 Tablero de Costos - Op. Trajes Españoles")
 
 with st.sidebar:
     try:
-        st.image("logo.png", use_container_width=True)
+        st.image("logo.jpg", use_container_width=True)
     except:
-        st.warning("⚠️ Sin logo.png")
+        st.warning("⚠️ Sin logo.jpg")
         
     st.header("Configuración 2026")
     uma = st.number_input("UMA ($)", value=113.14)
