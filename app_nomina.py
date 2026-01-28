@@ -9,9 +9,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. LÓGICA FISCAL Y FINANCIERA (2026) ---
+# --- 2. LÓGICA FISCAL 2026 ---
 
-def calcular_isr_con_subsidio(base_gravable, uma_valor):
+def calcular_isr_desglosado(base_gravable, uma_valor):
     # Tabla ISR 2026
     tabla = [
         (0.01, 0.0, 0.0192), (746.05, 14.32, 0.0640), (6332.06, 371.83, 0.1088),
@@ -33,61 +33,103 @@ def calcular_isr_con_subsidio(base_gravable, uma_valor):
         uma_mensual = uma_valor * 30.4
         monto_subsidio = uma_mensual * 0.1182
         
-    isr_neto = isr_bruto - monto_subsidio
-    return isr_bruto, monto_subsidio, isr_neto
+    difference = isr_bruto - monto_subsidio
+    if difference < 0:
+        isr_final = 0.0 
+    else:
+        isr_final = difference
+        
+    return isr_bruto, monto_subsidio, isr_final
 
 def calcular_fi(dias_ag, dias_vac, prima_vac):
     return (365 + dias_ag + (dias_vac * prima_vac)) / 365
 
-def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prima):
+def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prima, descontar_imss):
     dias_mes = 30.4
     
-    # Mensual
+    # 1. INGRESOS
     bruto_men = (sd * dias_mes) + ((bono/7) * dias_mes)
-    isr_bruto, subsidio, isr_neto_mensual = calcular_isr_con_subsidio(bruto_men, uma)
-    neto_a_recibir = bruto_men - isr_neto_mensual
     
-    # Costo Empresa
+    # 2. FISCAL (ISR MENSUAL)
+    isr_tarifa, subsidio_valor, isr_a_pagar = calcular_isr_desglosado(bruto_men, uma)
+    
+    # 3. SEGURIDAD SOCIAL (IMSS OBRERO)
+    imss_obrero_mensual = 0.0
     sbc = (sd * fi) + (bono/7)
     tope = 25 * uma
     if sbc > tope: sbc = tope
     
+    if descontar_imss:
+        imss_obrero_mensual = sbc * 0.02375 * dias_mes
+
+    # 4. NETO FINAL
+    neto_mensual_real = bruto_men - isr_a_pagar - imss_obrero_mensual
+    neto_semanal_real = (neto_mensual_real / 30.4) * 7
+    
+    # 5. COSTO EMPRESA (UNITARIO)
     cuota_patronal = (uma * 0.204 * dias_mes)
     if sbc > (3*uma): cuota_patronal += (sbc - (3*uma)) * 0.011 * dias_mes
     
-    factor_ramas = 0.007 + 0.0105 + 0.0175 + 0.01 + 0.0113065 + 0.065 + 0.05
-    carga_social = cuota_patronal + (sbc * factor_ramas * dias_mes)
-    
+    factor_ramas_patron = 0.007 + 0.0105 + 0.0175 + 0.01 + 0.0113065 + 0.065 + 0.05
+    carga_social_patron = cuota_patronal + (sbc * factor_ramas_patron * dias_mes)
     isn = bruto_men * tasa_isn
-    costo_men = bruto_men + carga_social + isn
     
-    # Anual
+    # Carga Social Mensual Unitario
+    carga_social_mensual_unit = carga_social_patron + isn
+    costo_men_empresa_unit = bruto_men + carga_social_mensual_unit
+    
+    # 6. ANUALES E ISR ANUAL
     aguinaldo = sd * d_ag
     prima = sd * d_vac * t_prima
     isn_anuales = (aguinaldo + prima) * tasa_isn
     
+    # Cálculo ISR Anual (Estimado con promedio)
     grav_ag = max(0, aguinaldo - (30*uma))
     grav_pv = max(0, prima - (15*uma))
+    # Base anual promedio para calcular la tasa efectiva anual
     base_anual_promedio = bruto_men + (grav_ag/12) + (grav_pv/12)
-    _, _, isr_neto_promedio_anual = calcular_isr_con_subsidio(base_anual_promedio, uma)
-    isr_total_anual_trabajador = isr_neto_promedio_anual * 12
+    _, _, isr_mensual_promedio_anual = calcular_isr_desglosado(base_anual_promedio, uma)
+    isr_total_anual_unit = isr_mensual_promedio_anual * 12
     
-    costo_anual = (costo_men * 12) + aguinaldo + prima + isn_anuales
+    carga_social_anual_unit = (carga_social_mensual_unit * 12) + isn_anuales
+    costo_anual_unit = (costo_men_empresa_unit * 12) + aguinaldo + prima + isn_anuales
+    
+    # --- MULTIPLICACIÓN POR GRUPO (TOTALES) ---
+    
+    # ISR del Grupo (Lo que pidió)
+    isr_mensual_grupo = isr_a_pagar * cant
+    isr_anual_grupo = isr_total_anual_unit * cant
+    
+    # Costos del Grupo
+    carga_social_mensual_grupo = carga_social_mensual_unit * cant
+    costo_men_empresa_grupo = costo_men_empresa_unit * cant
+    carga_social_anual_grupo = carga_social_anual_unit * cant
+    costo_anual_grupo = costo_anual_unit * cant
     
     return {
         "Puesto": puesto, 
         "Cantidad": cant,
-        "Nómina Bruta": bruto_men,
-        "Subsidio": subsidio,
-        "ISR Ret.": isr_neto_mensual,
-        "Neto Pagar": neto_a_recibir,
-        "Costo Men.": costo_men,
-        "Aguinaldo": aguinaldo,
-        "Prima Vac.": prima,
-        "Costo Anual": costo_anual,
-        # Ocultos para suma
-        "Total_Grupo": costo_anual * cant,
-        "Total_ISR_Grupo": isr_total_anual_trabajador * cant
+        # Trabajador Unitario
+        "Bruto": bruto_men,
+        "Subsidio": subsidio_valor,
+        "ISR Final": isr_a_pagar,
+        "IMSS Obrero": imss_obrero_mensual,
+        "Neto Mensual": neto_mensual_real,
+        "PAGO SEMANAL (Unitario)": neto_semanal_real,
+        
+        # TOTALES GRUPO (EMPRESA + SAT)
+        "ISR Retenido Men. (Grupo)": isr_mensual_grupo,    # <--- NUEVO
+        "Carga Social Men. (Grupo)": carga_social_mensual_grupo, 
+        "Costo Men. Total (Grupo)": costo_men_empresa_grupo,
+        
+        "ISR Retenido Anual (Grupo)": isr_anual_grupo,      # <--- NUEVO
+        "Carga Social Anual (Grupo)": carga_social_anual_grupo,
+        "Costo Anual Total (Grupo)": costo_anual_grupo,
+        
+        # Totales Métricas
+        "Total_Nomina_Semanal": neto_semanal_real * cant,
+        "Total_Grupo_Mensual": costo_men_empresa_grupo,
+        "Total_Grupo_Anual": costo_anual_grupo
     }
 
 # --- 3. INTERFAZ GRÁFICA ---
@@ -97,11 +139,13 @@ with st.sidebar:
     try:
         st.image("logo.jpg", use_container_width=True)
     except:
-        st.warning("⚠️ Sin logo.jpg")
+        st.warning("⚠️ Sin logo")
         
     st.header("Configuración 2026")
-    uma = st.number_input("UMA ($)", value=113.14)
+    st.markdown("### 🎚️ Control")
+    usar_imss = st.checkbox("Descontar IMSS al Trabajador", value=True)
     st.markdown("---")
+    uma = st.number_input("UMA ($)", value=113.14)
     smg = st.number_input("SM General ($)", value=316.04)
     sm_cost = st.number_input("SM Costurero ($)", value=326.38)
     sm_plan = st.number_input("SM Planchador ($)", value=326.84)
@@ -130,54 +174,52 @@ n3_b = c3.number_input("Bono Planchador ($)", 0.0, value=339.0)
 
 st.divider()
 
-if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
+if st.button("CALCULAR TOTALES DE GRUPO 🚀", type="primary", use_container_width=True):
     data = []
-    if n1_c > 0: data.append(calcular_todo("1. Ayudante", n1_c, smg, n1_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
-    if n2_c > 0: data.append(calcular_todo("2. Costurero", n2_c, sm_cost, n2_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
-    if n3_c > 0: data.append(calcular_todo("3. Planchador", n3_c, sm_plan, n3_b, uma, fi, t_isn, d_ag, d_vac, t_prima))
+    if n1_c > 0: data.append(calcular_todo("1. Ayudante", n1_c, smg, n1_b, uma, fi, t_isn, d_ag, d_vac, t_prima, usar_imss))
+    if n2_c > 0: data.append(calcular_todo("2. Costurero", n2_c, sm_cost, n2_b, uma, fi, t_isn, d_ag, d_vac, t_prima, usar_imss))
+    if n3_c > 0: data.append(calcular_todo("3. Planchador", n3_c, sm_plan, n3_b, uma, fi, t_isn, d_ag, d_vac, t_prima, usar_imss))
     
     if data:
         df = pd.DataFrame(data)
         
-        # FUNCIÓN DE FORMATO MAESTRA (Fuerza $ y Comas)
         def formato_pesos(val):
             return f"${val:,.2f}"
 
-        # TABLA 1: AL TRABAJADOR
-        st.subheader("1. Análisis del Trabajador (Mensual)")
-        cols_fiscal = ["Puesto", "Nómina Bruta", "Subsidio", "ISR Ret.", "Neto Pagar"]
+        # TABLA 1: AL TRABAJADOR (Unitario)
+        st.subheader("1. Pago al Trabajador (Datos Individuales)")
+        cols_fiscal = ["Puesto", "Bruto", "Subsidio", "ISR Final", "IMSS Obrero", "Neto Mensual", "PAGO SEMANAL (Unitario)"]
         df_fiscal = df[cols_fiscal].copy()
-        
-        # Aplicamos formato manual a todas las columnas de dinero
-        for col in ["Nómina Bruta", "Subsidio", "ISR Ret.", "Neto Pagar"]:
-            df_fiscal[col] = df_fiscal[col].apply(formato_pesos)
-            
+        for col in cols_fiscal[1:]: df_fiscal[col] = df_fiscal[col].apply(formato_pesos)   
         st.dataframe(df_fiscal, use_container_width=True, hide_index=True)
         
-        # TABLA 2: COSTO EMPRESA
-        st.subheader("2. Costos Empresa y Pasivos")
-        cols_fin = ["Puesto", "Costo Men.", "Aguinaldo", "Prima Vac.", "Costo Anual"]
-        df_fin = df[cols_fin].copy()
+        # TABLA 2: COSTO EMPRESA & RETENCIONES (Total Grupo)
+        st.subheader("2. Costo Real Empresa y Retenciones (TOTAL POR GRUPO)")
+        st.info("💡 Incluye nuevas columnas de ISR Total a Enterar al SAT")
         
-        for col in ["Costo Men.", "Aguinaldo", "Prima Vac.", "Costo Anual"]:
-            df_fin[col] = df_fin[col].apply(formato_pesos)
-            
+        # AGREGAMOS LAS COLUMNAS DE ISR GRUPO A LA VISTA
+        cols_fin = [
+            "Puesto", "Cantidad", 
+            "ISR Retenido Men. (Grupo)", "Carga Social Men. (Grupo)", "Costo Men. Total (Grupo)", 
+            "ISR Retenido Anual (Grupo)", "Costo Anual Total (Grupo)"
+        ]
+        
+        df_fin = df[cols_fin].copy()
+        for col in cols_fin[2:]: df_fin[col] = df_fin[col].apply(formato_pesos)
         st.dataframe(df_fin, use_container_width=True, hide_index=True)
         
-        # TOTALES
-        gasto_total = df["Total_Grupo"].sum()
-        isr_total = df["Total_ISR_Grupo"].sum()
-        flujo_men = (df["Costo Men."] * df["Cantidad"]).sum()
+        # --- TOTALES ---
+        nomina_semanal_total = df["Total_Nomina_Semanal"].sum()
+        gasto_mensual_total = df["Total_Grupo_Mensual"].sum()
+        gasto_anual_total = df["Total_Grupo_Anual"].sum()
         
         st.markdown("---")
-        st.markdown("### 📊 Totales Globales")
+        st.markdown("### 📊 Tablero de Control Financiero")
         
-        k1, k2 = st.columns(2)
-        # Aquí usamos string f manual para asegurar formato en las métricas también
-        k1.metric("Flujo Mensual", f"${flujo_men:,.2f}")
-        k2.metric("ISR Retenido Anual", f"${isr_total:,.2f}")
-        
-        st.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
+        k1, k2, k3 = st.columns(3)
+        k1.metric("1. NÓMINA SEMANAL (TOTAL)", f"${nomina_semanal_total:,.2f}", "A Dispersar Viernes")
+        k2.metric("2. GASTO MENSUAL (TOTAL)", f"${gasto_mensual_total:,.2f}", "Costo Operativo Mes")
+        k3.metric("3. GASTO ANUAL (TOTAL)", f"${gasto_anual_total:,.2f}", "Presupuesto 2026")
         
     else:
         st.error("Selecciona al menos 1 empleado.")
