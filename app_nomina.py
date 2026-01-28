@@ -12,17 +12,12 @@ st.set_page_config(
 # --- 2. LÓGICA FISCAL Y FINANCIERA (2026) ---
 
 def calcular_isr_con_subsidio(base_gravable, uma_valor):
-    """
-    Calcula ISR, aplica Subsidio 2026 (Tope $11,492.66)
-    y devuelve el ISR Neto (positivo = retener, negativo = entregar subsidio).
-    """
-    # A. Tabla ISR 2026 (Estimada)
+    # Tabla ISR 2026
     tabla = [
         (0.01, 0.0, 0.0192), (746.05, 14.32, 0.0640), (6332.06, 371.83, 0.1088),
         (11128.02, 893.63, 0.1600), (12935.83, 1182.88, 0.1792), (26988.51, 3701.24, 0.2136)
     ]
     
-    # 1. ISR Bruto
     isr_bruto = 0.0
     for lim, cuota, porc in tabla:
         if base_gravable >= lim:
@@ -30,7 +25,7 @@ def calcular_isr_con_subsidio(base_gravable, uma_valor):
         else:
             break
             
-    # B. Subsidio al Empleo 2026
+    # Subsidio 2026
     tope_ingresos_subsidio = 11492.66
     monto_subsidio = 0.0
     
@@ -38,9 +33,7 @@ def calcular_isr_con_subsidio(base_gravable, uma_valor):
         uma_mensual = uma_valor * 30.4
         monto_subsidio = uma_mensual * 0.1182
         
-    # 3. ISR Neto (Lo que se descuenta o se paga)
     isr_neto = isr_bruto - monto_subsidio
-    
     return isr_bruto, monto_subsidio, isr_neto
 
 def calcular_fi(dias_ag, dias_vac, prima_vac):
@@ -49,15 +42,9 @@ def calcular_fi(dias_ag, dias_vac, prima_vac):
 def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prima):
     dias_mes = 30.4
     
-    # --- MENSUAL ---
+    # Mensual
     bruto_men = (sd * dias_mes) + ((bono/7) * dias_mes)
-    
-    # Cálculo Fiscal
     isr_bruto, subsidio, isr_neto_mensual = calcular_isr_con_subsidio(bruto_men, uma)
-    
-    # NETO A PAGAR AL TRABAJADOR
-    # Si isr_neto_mensual es positivo, se le resta al bruto.
-    # Si es negativo (porque el subsidio fue mayor), matemáticamente se suma (menos por menos da más).
     neto_a_recibir = bruto_men - isr_neto_mensual
     
     # Costo Empresa
@@ -74,12 +61,11 @@ def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prim
     isn = bruto_men * tasa_isn
     costo_men = bruto_men + carga_social + isn
     
-    # --- ANUAL ---
+    # Anual
     aguinaldo = sd * d_ag
     prima = sd * d_vac * t_prima
     isn_anuales = (aguinaldo + prima) * tasa_isn
     
-    # ISR Anual (Promedio estimado)
     grav_ag = max(0, aguinaldo - (30*uma))
     grav_pv = max(0, prima - (15*uma))
     base_anual_promedio = bruto_men + (grav_ag/12) + (grav_pv/12)
@@ -89,16 +75,17 @@ def calcular_todo(puesto, cant, sd, bono, uma, fi, tasa_isn, d_ag, d_vac, t_prim
     costo_anual = (costo_men * 12) + aguinaldo + prima + isn_anuales
     
     return {
-        "Puesto": puesto, "Cantidad": cant,
-        "Nómina Bruta (Men)": bruto_men,
-        # FISCAL
-        "ISR a Retener (Final)": isr_neto_mensual,
-        "Neto a Recibir (Mensual)": neto_a_recibir, # <--- NUEVA COLUMNA
-        # FINANCIERO
-        "Costo Mensual (Empresa)": costo_men,
-        "Aguinaldo (18 Días)": aguinaldo,
-        "Prima Vacacional": prima,
-        "COSTO ANUAL TOTAL": costo_anual,
+        "Puesto": puesto, 
+        "Cantidad": cant,
+        "Nómina Bruta": bruto_men,
+        "Subsidio": subsidio,
+        "ISR Ret.": isr_neto_mensual,
+        "Neto Pagar": neto_a_recibir,
+        "Costo Men.": costo_men,
+        "Aguinaldo": aguinaldo,
+        "Prima Vac.": prima,
+        "Costo Anual": costo_anual,
+        # Ocultos para suma
         "Total_Grupo": costo_anual * cant,
         "Total_ISR_Grupo": isr_total_anual_trabajador * cant
     }
@@ -152,34 +139,45 @@ if st.button("CALCULAR REPORTE 🚀", type="primary", use_container_width=True):
     if data:
         df = pd.DataFrame(data)
         
-        st.subheader("1. Análisis del Trabajador (Neto a Bolsillo)")
-        # AQUI AGREGAMOS LA NUEVA COLUMNA DE NETO A RECIBIR
-        cols_fiscal = ["Puesto", "Nómina Bruta (Men)", "ISR a Retener (Final)", "Neto a Recibir (Mensual)"]
+        # FUNCIÓN DE FORMATO MAESTRA (Fuerza $ y Comas)
+        def formato_pesos(val):
+            return f"${val:,.2f}"
+
+        # TABLA 1: AL TRABAJADOR
+        st.subheader("1. Análisis del Trabajador (Mensual)")
+        cols_fiscal = ["Puesto", "Nómina Bruta", "Subsidio", "ISR Ret.", "Neto Pagar"]
         df_fiscal = df[cols_fiscal].copy()
-        for c in cols_fiscal[1:]: df_fiscal[c] = df_fiscal[c].map('${:,.2f}'.format)
-        st.dataframe(df_fiscal, use_container_width=True)
         
+        # Aplicamos formato manual a todas las columnas de dinero
+        for col in ["Nómina Bruta", "Subsidio", "ISR Ret.", "Neto Pagar"]:
+            df_fiscal[col] = df_fiscal[col].apply(formato_pesos)
+            
+        st.dataframe(df_fiscal, use_container_width=True, hide_index=True)
+        
+        # TABLA 2: COSTO EMPRESA
         st.subheader("2. Costos Empresa y Pasivos")
-        cols_fin = ["Puesto", "Costo Mensual (Empresa)", "Aguinaldo (18 Días)", "Prima Vacacional", "COSTO ANUAL TOTAL"]
+        cols_fin = ["Puesto", "Costo Men.", "Aguinaldo", "Prima Vac.", "Costo Anual"]
         df_fin = df[cols_fin].copy()
-        for c in cols_fin[1:]: df_fin[c] = df_fin[c].map('${:,.2f}'.format)
-        st.dataframe(df_fin, use_container_width=True)
         
-        # --- SECCIÓN DE TOTALES (DISEÑO MÁS ANCHO) ---
+        for col in ["Costo Men.", "Aguinaldo", "Prima Vac.", "Costo Anual"]:
+            df_fin[col] = df_fin[col].apply(formato_pesos)
+            
+        st.dataframe(df_fin, use_container_width=True, hide_index=True)
+        
+        # TOTALES
         gasto_total = df["Total_Grupo"].sum()
         isr_total = df["Total_ISR_Grupo"].sum()
-        flujo_men = (df["Costo Mensual (Empresa)"] * df["Cantidad"]).sum()
+        flujo_men = (df["Costo Men."] * df["Cantidad"]).sum()
         
         st.markdown("---")
         st.markdown("### 📊 Totales Globales")
         
-        # Fila 1: Flujo mensual e ISR (2 Columnas anchas)
         k1, k2 = st.columns(2)
-        k1.metric("Flujo Mensual Requerido", f"${flujo_men:,.2f}", "Salida de Banco Mes")
-        k2.metric("ISR Retenido Anual", f"${isr_total:,.2f}", "Enterar al SAT")
+        # Aquí usamos string f manual para asegurar formato en las métricas también
+        k1.metric("Flujo Mensual", f"${flujo_men:,.2f}")
+        k2.metric("ISR Retenido Anual", f"${isr_total:,.2f}")
         
-        # Fila 2: EL GRAN TOTAL (1 Columna completa para que no se corte)
-        st.metric("GASTO ANUAL FÁBRICA (TOTAL)", f"${gasto_total:,.2f}", "Costo Real de la Operación")
+        st.metric("GASTO ANUAL FÁBRICA", f"${gasto_total:,.2f}")
         
     else:
         st.error("Selecciona al menos 1 empleado.")
