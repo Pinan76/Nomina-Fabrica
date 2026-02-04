@@ -1,3 +1,3 @@
 streamlit
-Pillow
 pandas
+openpyxl
