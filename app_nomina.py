@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 
@@ -236,9 +237,9 @@ def calcular_impacto_isr_bono(sd, bono_sem, uma, fi, tasa_isn, dias_calc, desc_i
 # ==========================================
 
 with st.sidebar:
-    try:
+    if os.path.exists("logo.png"):
         st.image("logo.png", use_container_width=True)
-    except FileNotFoundError:
+    else:
         st.markdown("### 🏭 Trajes Españoles")
         st.warning("Falta archivo 'logo.png'")
 
