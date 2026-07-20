@@ -4,64 +4,63 @@ import pandas as pd
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
-    page_title="Nómina Estratégica V29",
+    page_title="Nómina Estratégica V30",
     page_icon="💰",
     layout="wide"
 )
 
 # ==========================================
-# MOTOR DE CÁLCULO V29
+# MOTOR DE CÁLCULO V30
 # ==========================================
 #
-# Cambios respecto a V28, todos derivados de cruzar 27 semanas de hojas de
-# captura de incentivos + ~35 recibos CFDI reales de nómina:
+# Cambios respecto a V29 (dos correcciones importantes, ambas pedidas
+# explícitamente tras revisar el reporte real "Partes Gravadas para ISR
+# por empleado" de CONTPAQi):
 #
-# 1. BUG CORREGIDO: los defaults de salario base en el sidebar de la V28
-#    seguían en $280.00 / $288.83 / $289.24 (del censo, desactualizado),
-#    a pesar de que se había confirmado con MÚLTIPLES recibos CFDI reales
-#    (Sueldo ÷ 6 días) que los salarios vigentes son $316.40 / $326.38 /
-#    $326.84. Ese error nunca se aplicó al código, solo se mencionó en
-#    conversación. Ya corregido aquí.
+# 1. NUEVO: Aportación Patronal de INFONAVIT (5% del SBC) — no estaba
+#    incluida en ninguna versión anterior. Es una contribución obligatoria
+#    y separada de las cuotas IMSS (se recauda junto vía SUA, pero va a un
+#    fondo distinto). Ya está sumada a la carga patronal.
 #
-# 2. NUEVO: "Ayuda de Transporte" ahora es un input explícito, con un
-#    toggle GRAVADO (percepción en efectivo, como hoy en tus recibos) vs
-#    EXENTO (servicio de transporte de personal pagado directo al
-#    transportista + descuento de nómina al trabajador — la figura que
-#    discutimos). El toggle cambia si ese monto entra o no a la base de
-#    ISR, porque es justo la diferencia que puede darte ~10-15 puntos de
-#    margen antes de cruzar el límite del subsidio.
+# 2. CORREGIDO — el cambio más importante: la fórmula del "Sueldo
+#    Mensualizado" (la que decide si se conserva o se pierde el subsidio al
+#    cierre de mes) estaba mal. La versión anterior comparaba la SUMA REAL
+#    de las semanas del mes contra el límite de $11,492.66. La fórmula real
+#    de CONTPAQi, validada letra por letra contra el reporte de junio 2026,
+#    es distinta:
 #
-# 3. NUEVO — el cambio más importante: el motor ahora calcula el ISR de
-#    DOS formas y las muestra juntas:
-#       a) "ISR retenido semana a semana" (aislado, lo que ves en cada
-#          recibo durante el mes)
-#       b) "ISR real del mes" (agregando las 4 o 5 semanas y aplicando la
-#          tabla mensual UNA sola vez, con el subsidio como todo-o-nada)
-#    La diferencia entre (b) y (a) es el "ajuste de cierre de mes" que
-#    confirmaste que CONTPAQi está aplicando. La V28 solo mostraba (a),
-#    que subestima el costo real de subir el incentivo — sobre todo cerca
-#    del límite de $11,492.66/mes.
+#        Sueldo Mensualizado = (Total Percepciones Gravables del periodo
+#                                ÷ Días Trabajados) × 30.4
 #
-# 4. NUEVO: la Tabla de Incentivos real (4 Clases × 3 Tiers = 12 montos)
-#    ahora es editable en vez de un solo "Bono Efectivo Semanal" plano.
+#    Esto tiene dos consecuencias importantes:
+#      a) El margen semanal seguro es MÁS CHICO de lo que se había calculado
+#         antes ($376.54 Ayudante / $306.68 Costurero / $303.46 Planchador,
+#         con transporte gravado de referencia $55/semana — antes se
+#         reportaban cifras de $530-603).
+#      b) El margen YA NO DEPENDE de si el mes tiene 4 o 5 semanas — el
+#         factor 30.4 normaliza por día, no por mes calendario. Es el MISMO
+#         margen semanal siempre. La idea de que "los meses de 5 semanas
+#         son estructuralmente peores" (de versiones anteriores de este
+#         análisis) queda descartada: el margen siempre fue así de
+#         estrecho, todo el año — lo que pasa en meses de 5 semanas es que
+#         se pierde MÁS SUBSIDIO EN PESOS al cruzar (5 semanas × $123.47 en
+#         vez de 4), no que sea más fácil cruzar.
 #
-# 5. NUEVO: pestaña "Simulador de Acantilado" — muestra, para cada
-#    categoría y cada tier de la tabla, si el trabajador se mantiene
-#    dentro o fuera del límite del subsidio en meses de 4 y de 5 semanas,
-#    y el efecto exacto en neto de cruzar esa línea (el ejemplo real:
-#    +$80 de bruto al mes puede significar -$468 de neto si cruza).
+#    Esta corrección explica, con mucho mejor ajuste, la tasa real de
+#    pérdida de subsidio observada en el reporte de junio 2026 (30.4% de
+#    373 sindicalizados, hasta 60.8% en Planchador) — con el margen viejo
+#    (más generoso) esa tasa de pérdida no debería ser tan alta.
 #
-# Se mantiene todo lo ya corregido en V28 (tabla ISR 2026 de 11 tramos,
+# Se mantiene todo lo ya corregido en V28/V29 (tabla ISR 2026 de 11 tramos,
 # CEAV tope 7.513%, sin doble conteo de vacaciones, IMSS obrero con
-# excedente de 3 UMA, ramas patronales desglosadas).
+# excedente de 3 UMA, ramas patronales desglosadas, transporte
+# gravado/exento, Tabla de Incentivos editable).
 #
-# PENDIENTE DE CONFIRMAR CON TU CONTADOR (no modelable con certeza sin su
-# confirmación): el mecanismo EXACTO del ajuste de cierre de mes. Aquí se
-# modela como "agregado mensual con subsidio todo-o-nada", que es
-# consistente con los montos reales que viste en tus recibos (múltiplos
-# exactos de $123.47), pero la forma en que CONTPAQi lo distribuye o si
-# hay matices adicionales debe confirmarse antes de usar estos números
-# para decisiones finales.
+# IMPORTANTE: esta corrección invalida el margen usado para diseñar la
+# "Tabla Intermedia" y los niveles 110%/120% de la tabla de transición
+# propuestos en el chat — ambos se diseñaron con el margen viejo (más
+# generoso) y deben revisarse contra el margen correcto antes de usarse
+# en una decisión final.
 
 # --- Tabla ISR MENSUAL 2026 (Art. 96 LISR, Anexo 8 RMF 2026) ---
 TABLA_ISR_MENSUAL_2026 = [
@@ -86,8 +85,10 @@ RAMA_GASTOS_MEDICOS_PENS_PAT = 0.0105
 RAMA_INVALIDEZ_VIDA_PAT = 0.0175
 RAMA_GUARDERIAS_PAT = 0.0100
 RAMA_RETIRO_PAT = 0.0200
+INFONAVIT_PATRONAL = 0.0500  # Aportación patronal INFONAVIT, 5% del SBC (obligatoria, separada del IMSS)
 RAMAS_FIJAS_PATRONALES = (RAMA_PRESTACIONES_DINERO_PAT + RAMA_GASTOS_MEDICOS_PENS_PAT
-                           + RAMA_INVALIDEZ_VIDA_PAT + RAMA_GUARDERIAS_PAT + RAMA_RETIRO_PAT)
+                           + RAMA_INVALIDEZ_VIDA_PAT + RAMA_GUARDERIAS_PAT + RAMA_RETIRO_PAT
+                           + INFONAVIT_PATRONAL)
 
 IMSS_OBRERO_FLAT = 0.02375
 IMSS_OBRERO_EXCEDENTE_3UMA = 0.0040
@@ -122,20 +123,30 @@ def calcular_isr_normalizado(ingreso_periodo, dias_periodo, uma_valor):
     return max(0, isr_per - sub_per), sub_per
 
 
-def calcular_isr_mensual_real(ingreso_mensual_real, uma_valor):
-    """ISR verdadero del mes: aplica la tabla mensual UNA sola vez sobre
-    el ingreso mensual real acumulado (suma de las 4 o 5 semanas), con el
-    subsidio como todo-o-nada según el límite de $11,492.66. Esto es lo
-    que el ajuste de cierre de mes termina forzando, confirmado contra
-    tus recibos reales."""
+def calcular_isr_mensual_real(total_percepciones_gravables, dias_trabajados, uma_valor):
+    """ISR verdadero del mes — CORREGIDO. Fórmula validada letra por letra
+    contra el reporte real de CONTPAQi 'Partes Gravadas para ISR por
+    empleado': el Sueldo Mensualizado NO es la suma simple de las semanas,
+    es esa suma convertida a tasa diaria y reelevada por 30.4:
+
+        Sueldo Mensualizado = (Total Percepciones Gravables / Días
+                                Trabajados) × 30.4
+
+    El subsidio sigue siendo todo-o-nada según el límite de $11,492.66."""
+    if dias_trabajados <= 0:
+        return 0.0, 0.0
+    sueldo_mensualizado = (total_percepciones_gravables / dias_trabajados) * 30.4
     isr_bruto = 0.0
     for lim, cuota, porc in TABLA_ISR_MENSUAL_2026:
-        if ingreso_mensual_real >= lim:
-            isr_bruto = cuota + ((ingreso_mensual_real - lim) * porc)
+        if sueldo_mensualizado >= lim:
+            isr_bruto = cuota + ((sueldo_mensualizado - lim) * porc)
         else:
             break
-    subsidio = SUBSIDIO_MENSUAL_FORMULA(uma_valor) if ingreso_mensual_real <= LIMITE_MENSUAL_SUBSIDIO else 0.0
-    return max(0, isr_bruto - subsidio), subsidio
+    subsidio = SUBSIDIO_MENSUAL_FORMULA(uma_valor) if sueldo_mensualizado <= LIMITE_MENSUAL_SUBSIDIO else 0.0
+    # isr_bruto y subsidio están en escala MENSUAL (elevada); se regresan a
+    # escala del periodo real para poder restarlos del bruto del periodo.
+    factor_regreso = dias_trabajados / 30.4
+    return max(0, (isr_bruto - subsidio) * factor_regreso), subsidio * factor_regreso
 
 
 def calcular_prima_riesgo_ceav(sbc, uma):
@@ -240,15 +251,17 @@ def calcular_fi(d_ag, d_vac, t_prima):
     return (365 + d_ag + (d_vac * t_prima)) / 365
 
 
-def margen_semanal_antes_de_cruzar(sd, transporte_sem, transporte_gravado, n_semanas, uma):
-    """Cuántos pesos de incentivo POR SEMANA puede recibir un trabajador
-    de este puesto antes de que el ingreso mensual acumulado cruce el
-    límite del subsidio al empleo. Negativo = ya lo cruzó sin incentivo."""
+def margen_semanal_antes_de_cruzar(sd, transporte_sem, transporte_gravado, uma):
+    """CORREGIDO: cuántos pesos de incentivo POR SEMANA puede recibir un
+    trabajador de este puesto antes de que el Sueldo Mensualizado (fórmula
+    real: total/días×30.4) cruce el límite del subsidio al empleo. Con la
+    fórmula correcta este margen YA NO depende de si el mes tiene 4 o 5
+    semanas — es el mismo siempre, porque el factor 30.4 normaliza por día,
+    no por mes calendario. Negativo = ya lo cruza solo con el sueldo base."""
+    techo_semanal = LIMITE_MENSUAL_SUBSIDIO * 7 / 30.4
     base_semana = sd * 7
     transp_grav = transporte_sem if transporte_gravado else 0
-    base_mensual_gravable = (base_semana + transp_grav) * n_semanas
-    margen_total = LIMITE_MENSUAL_SUBSIDIO - base_mensual_gravable
-    return margen_total / n_semanas
+    return techo_semanal - (base_semana + transp_grav)
 
 
 # ==========================================
@@ -309,7 +322,7 @@ with st.sidebar:
     fi_cos = calcular_fi(d_ag, d_vac_cos, 0.25)
     fi_plan = calcular_fi(d_ag, d_vac_plan, 0.25)
 
-st.title("Simulador de Nómina Estratégica (V29)")
+st.title("Simulador de Nómina Estratégica (V30)")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "1. NÓMINA", "2. TABLA DE INCENTIVOS", "3. SIMULADOR DE ACANTILADO", "4. MAQUILA (Pendiente)"
@@ -343,7 +356,7 @@ with tab1:
 
     st.markdown("---")
 
-    if st.button("CALCULAR NÓMINA V29", type="primary", use_container_width=True):
+    if st.button("CALCULAR NÓMINA V30", type="primary", use_container_width=True):
         t_isn = 0.03
         data = []
         if n_ayu > 0:
@@ -412,66 +425,73 @@ with tab3:
     st.caption(
         f"Límite mensual del subsidio al empleo: ${LIMITE_MENSUAL_SUBSIDIO:,.2f}. Si el ingreso gravable "
         "del mes lo supera, el trabajador pierde TODO el subsidio de ese mes (no es gradual) — y en la "
-        "última semana del mes se le recupera de golpe lo que se le había dado."
+        "última semana del mes se le recupera de golpe lo que se le había dado. "
+        "**Corregido:** el margen ya no depende de si el mes tiene 4 o 5 semanas — el factor de "
+        "elevación (30.4) normaliza por día, no por mes calendario, así que es el mismo margen semanal "
+        "todo el año. Lo que sí cambia entre meses de 4 y 5 semanas es cuántos pesos de subsidio están "
+        "en juego si se cruza (una semana más de subsidio que recuperar)."
     )
 
     tabla_uso = st.session_state.get("tabla_incentivos", TABLA_INCENTIVOS_DEFAULT)
 
-    st.markdown("### Margen disponible por categoría (antes de sumar el incentivo)")
+    st.markdown("### Margen semanal seguro por categoría (antes de sumar el incentivo)")
     filas_margen = []
     for puesto, sd in SD_MAP.items():
-        for n in [4, 5]:
-            margen = margen_semanal_antes_de_cruzar(sd, transporte_prom, transp_gravado, n, uma)
-            filas_margen.append({"Puesto": puesto, "Mes de": f"{n} semanas", "Margen semanal antes de incentivo": margen})
-    df_margen = pd.DataFrame(filas_margen).pivot(index="Puesto", columns="Mes de", values="Margen semanal antes de incentivo")
+        margen = margen_semanal_antes_de_cruzar(sd, transporte_prom, transp_gravado, uma)
+        filas_margen.append({"Puesto": puesto, "Margen semanal antes de incentivo": margen})
+    df_margen = pd.DataFrame(filas_margen).set_index("Puesto")
     st.dataframe(df_margen.style.format("${:,.2f}"), use_container_width=True)
-    st.caption("Negativo = ya se cruza el límite solo con sueldo + transporte, antes de un solo peso de incentivo.")
+    st.caption("Negativo = ya se cruza el límite solo con sueldo + transporte, antes de un solo peso de incentivo. "
+               "Este margen aplica igual sin importar si el mes tiene 4 o 5 semanas.")
 
     st.markdown("---")
-    st.markdown("### Semáforo: cada combinación Clase/Tier de tu tabla, por categoría y longitud de mes")
+    st.markdown("### Semáforo: cada combinación Clase/Tier de tu tabla, por categoría")
 
     filas_semaforo = []
     for puesto, sd in SD_MAP.items():
-        for n in [4, 5]:
-            margen = margen_semanal_antes_de_cruzar(sd, transporte_prom, transp_gravado, n, uma)
-            for clase, tiers in tabla_uso.items():
-                for tier, monto in tiers.items():
-                    cruza = monto > margen
-                    filas_semaforo.append({
-                        "Puesto": puesto, "Mes": f"{n} sem", "Clase": clase, "Tier": f"{int(tier*100)}%",
-                        "Incentivo/sem": monto, "Estado": "🔴 Cruza — pierde subsidio" if cruza else "🟢 Mantiene subsidio"
-                    })
+        margen = margen_semanal_antes_de_cruzar(sd, transporte_prom, transp_gravado, uma)
+        for clase, tiers in tabla_uso.items():
+            for tier, monto in tiers.items():
+                cruza = monto > margen
+                filas_semaforo.append({
+                    "Puesto": puesto, "Clase": clase, "Tier": f"{int(tier*100)}%",
+                    "Incentivo/sem": monto, "Estado": "🔴 Cruza — pierde subsidio" if cruza else "🟢 Mantiene subsidio"
+                })
     df_sem = pd.DataFrame(filas_semaforo)
     puesto_filtro = st.selectbox("Filtrar por categoría", list(SD_MAP.keys()), key="filtro_semaforo")
     st.dataframe(df_sem[df_sem["Puesto"] == puesto_filtro].drop(columns="Puesto"), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### El acantilado en números: comparación directa antes/después de cruzar")
-    st.caption("Elige una categoría y compara el neto mensual justo antes vs. justo después del límite.")
+    st.caption("Elige una categoría y compara el neto del periodo justo antes vs. justo después del límite. "
+               "La longitud del mes (4 o 5 semanas) no cambia si se cruza o no, pero sí cuánto subsidio total está en juego.")
 
     puesto_cliff = st.selectbox("Categoría", list(SD_MAP.keys()), key="puesto_cliff")
     sd_cliff = SD_MAP[puesto_cliff]
     n_cliff = st.radio("Longitud del mes", [4, 5], horizontal=True, key="n_cliff")
     incentivo_cliff = st.slider("Incentivo semanal a simular ($)", 0, 900, 400, step=10, key="incentivo_cliff")
 
+    dias_cliff = n_cliff * 7
     base_semana = sd_cliff * 7
     transp_grav_cliff = transporte_prom if transp_gravado else 0
-    bruto_mes = (base_semana + transp_grav_cliff) * n_cliff + incentivo_cliff * n_cliff
-    isr_mes, sub_mes = calcular_isr_mensual_real(bruto_mes, uma)
-    bruto_total_percibido = (base_semana + transporte_prom) * n_cliff + incentivo_cliff * n_cliff
-    neto_mes = bruto_total_percibido - isr_mes
+    total_percepciones_gravables = (base_semana + transp_grav_cliff + incentivo_cliff) * n_cliff
+    isr_periodo, sub_periodo = calcular_isr_mensual_real(total_percepciones_gravables, dias_cliff, uma)
+    bruto_total_percibido = (base_semana + transporte_prom + incentivo_cliff) * n_cliff
+    neto_periodo = bruto_total_percibido - isr_periodo
 
-    cruzo = bruto_mes > LIMITE_MENSUAL_SUBSIDIO
+    sueldo_mensualizado = (total_percepciones_gravables / dias_cliff) * 30.4
+    cruzo = sueldo_mensualizado > LIMITE_MENSUAL_SUBSIDIO
     col1, col2, col3 = st.columns(3)
-    col1.metric("Ingreso gravable del mes", f"${bruto_mes:,.2f}")
-    col2.metric("Subsidio del mes", f"${sub_mes:,.2f}", delta="Perdido" if cruzo else "Conservado", delta_color="inverse" if cruzo else "normal")
-    col3.metric("Neto del mes (estimado)", f"${neto_mes:,.2f}")
+    col1.metric("Sueldo Mensualizado (elevado)", f"${sueldo_mensualizado:,.2f}")
+    col2.metric("Subsidio del periodo", f"${sub_periodo:,.2f}", delta="Perdido" if cruzo else "Conservado", delta_color="inverse" if cruzo else "normal")
+    col3.metric("Neto del periodo (estimado)", f"${neto_periodo:,.2f}")
 
     if cruzo:
-        st.error(f"⚠️ Este escenario CRUZA el límite por ${bruto_mes - LIMITE_MENSUAL_SUBSIDIO:,.2f}. "
-                 f"El trabajador pierde el subsidio completo del mes (~${SUBSIDIO_MENSUAL_FORMULA(uma):,.2f}).")
+        st.error(f"⚠️ Este escenario CRUZA el límite por ${sueldo_mensualizado - LIMITE_MENSUAL_SUBSIDIO:,.2f} "
+                 f"en el Sueldo Mensualizado. El trabajador pierde el subsidio completo del periodo "
+                 f"(~${SUBSIDIO_MENSUAL_FORMULA(uma)/30.4*dias_cliff:,.2f}).")
     else:
-        st.success(f"✅ Este escenario se mantiene ${LIMITE_MENSUAL_SUBSIDIO - bruto_mes:,.2f} por debajo del límite. Subsidio conservado.")
+        st.success(f"✅ Este escenario se mantiene ${LIMITE_MENSUAL_SUBSIDIO - sueldo_mensualizado:,.2f} por debajo del límite. Subsidio conservado.")
 
 with tab4:
     st.write("🚧 Cotizador Maquila (Pendiente de Configurar)")
