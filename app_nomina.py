@@ -288,7 +288,7 @@ with st.sidebar:
         st.image("logo.png", use_container_width=True)
     else:
         st.markdown("### 🏭 Trajes Españoles")
-        st.warning("Falta archivo 'logo.png'")
+        st.warning("Falta archivo 'logo.jpg'")
 
     st.markdown("---")
     st.header("Configuración")
