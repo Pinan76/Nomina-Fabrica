@@ -210,7 +210,7 @@ def calcular_escenario_periodo(sd, bono_efec_sem, transporte_sem, transporte_gra
     neto_bolsillo = bruto_total_percibido - isr - imss_obr
     costo_empresa = bruto_total_percibido + carga_patronal + isn
 
-    return isr, sub, neto_bolsillo, imss_obr, carga_patronal + isn, costo_empresa, bruto_gravable, bruto_total_percibido
+    return isr, sub, neto_bolsillo, imss_obr, carga_patronal, isn, costo_empresa, bruto_gravable, bruto_total_percibido
 
 
 def calcular_proyeccion_completa_v29(puesto, cant, sd, b_efec, transporte_sem, transporte_gravado,
@@ -218,17 +218,25 @@ def calcular_proyeccion_completa_v29(puesto, cant, sd, b_efec, transporte_sem, t
                                        desc_imss, semanas_view, prima_riesgo_trabajo):
     dias_view = 28 if semanas_view == "4 Semanas" else 35
 
-    (isr_r, sub_r, neto_r, imss_obr_r, carga_r, costo_r,
+    (isr_r, sub_r, neto_r, imss_obr_r, imss_pat_r, isn_r, costo_r,
      bruto_grav_r, bruto_tot_r) = calcular_escenario_periodo(
         sd, b_efec, transporte_sem, transporte_gravado, uma, fi, tasa_isn, dias_view, desc_imss, prima_riesgo_trabajo
     )
 
-    _, _, _, _, _, costo_mes_corto, _, _ = calcular_escenario_periodo(
+    (isr_corto, _, _, imss_obr_corto, imss_pat_corto, isn_corto, costo_mes_corto, _, _) = calcular_escenario_periodo(
         sd, b_efec, transporte_sem, transporte_gravado, uma, fi, tasa_isn, 28, desc_imss, prima_riesgo_trabajo)
-    _, _, _, _, _, costo_mes_largo, _, _ = calcular_escenario_periodo(
+    (isr_largo, _, _, imss_obr_largo, imss_pat_largo, isn_largo, costo_mes_largo, _, _) = calcular_escenario_periodo(
         sd, b_efec, transporte_sem, transporte_gravado, uma, fi, tasa_isn, 35, desc_imss, prima_riesgo_trabajo)
 
+    # Mismo patrón que el costo operativo (8 meses "cortos" de 4 semanas + 4 meses
+    # "largos" de 5 semanas = estructura real de periodos de pago al año) aplicado
+    # también a ISR y a IMSS patronal, para que el anual sea consistente.
     costo_operativo_anual = (costo_mes_corto * 8) + (costo_mes_largo * 4)
+    isr_anual = (isr_corto * 8) + (isr_largo * 4)
+    imss_patronal_anual = (imss_pat_corto * 8) + (imss_pat_largo * 4)
+    imss_obrero_anual = (imss_obr_corto * 8) + (imss_obr_largo * 4)
+    isn_anual = (isn_corto * 8) + (isn_largo * 4)
+
     vacaciones_pago_base = sd * d_vac
     prima_vacacional = vacaciones_pago_base * t_prima
     aguinaldo = sd * d_ag
@@ -238,11 +246,18 @@ def calcular_proyeccion_completa_v29(puesto, cant, sd, b_efec, transporte_sem, t
     return {
         "Puesto": puesto, "Cantidad": cant,
         "Bruto Gravable": bruto_grav_r, "Bruto Total": bruto_tot_r,
-        "Subsidio": sub_r, "ISR Ret": isr_r, "IMSS Obr": imss_obr_r, "Neto": neto_r,
+        "Subsidio": sub_r, "ISR Ret": isr_r, "IMSS Obr": imss_obr_r, "IMSS Patronal": imss_pat_r, "Neto": neto_r,
         "Costo Mensual Grupo": costo_r * cant,
         "Prima Vacacional Grupo": prima_vacacional * cant,
         "Aguinaldo Grupo": aguinaldo * cant,
         "Costo Anual Grupo": costo_anual_total_unit * cant,
+        "ISR Ret Anual Grupo": isr_anual * cant,
+        "ISR Ret Mensual Grupo": (isr_anual / 12) * cant,
+        "IMSS Patronal Anual Grupo": imss_patronal_anual * cant,
+        "IMSS Patronal Mensual Grupo": (imss_patronal_anual / 12) * cant,
+        "IMSS Obrero Anual Grupo": imss_obrero_anual * cant,
+        "IMSS Obrero Mensual Grupo": (imss_obrero_anual / 12) * cant,
+        "ISN Anual Grupo": isn_anual * cant,
         "_sd": sd, "_bono": b_efec, "_transporte": transporte_sem, "_transp_gravado": transporte_gravado,
     }
 
@@ -374,7 +389,7 @@ with tab1:
                 return "${:,.2f}".format(x)
 
             st.subheader(f"1. Detalle del Trabajador (Periodo: {semanas})")
-            cols_w = ["Puesto", "Bruto Total", "Subsidio", "ISR Ret", "IMSS Obr", "Neto"]
+            cols_w = ["Puesto", "Bruto Total", "Subsidio", "ISR Ret", "IMSS Obr", "IMSS Patronal", "Neto"]
             df_show1 = df[cols_w].copy()
             for c in cols_w[1:]:
                 df_show1[c] = df_show1[c].apply(fmt)
@@ -390,11 +405,35 @@ with tab1:
                 df_show2[c] = df_show2[c].apply(fmt)
             st.table(df_show2)
 
+            st.subheader("2.1 ISR e IMSS — Mensual y Anualizado")
+            st.caption("ISR es la retención al trabajador (informativo — no es costo de la empresa). "
+                       "IMSS Patronal e IMSS Obrero sí distinguen quién paga cada uno. Todo calculado con "
+                       "la mezcla real de periodos de pago (8 meses de 4 semanas + 4 meses de 5 semanas al año).")
+            cols_fiscal = ["Puesto", "ISR Ret Mensual Grupo", "ISR Ret Anual Grupo",
+                           "IMSS Patronal Mensual Grupo", "IMSS Patronal Anual Grupo",
+                           "IMSS Obrero Mensual Grupo", "IMSS Obrero Anual Grupo"]
+            df_show3 = df[cols_fiscal].copy()
+            for c in cols_fiscal[1:]:
+                df_show3[c] = df_show3[c].apply(fmt)
+            st.table(df_show3)
+
             total_anual = df["Costo Anual Grupo"].sum()
             total_personas = df["Cantidad"].sum()
+            total_isr_mes = df["ISR Ret Mensual Grupo"].sum()
+            total_isr_anual = df["ISR Ret Anual Grupo"].sum()
+            total_imss_pat_mes = df["IMSS Patronal Mensual Grupo"].sum()
+            total_imss_pat_anual = df["IMSS Patronal Anual Grupo"].sum()
+
             colR1, colR2 = st.columns(2)
             colR1.success(f"### GRAN TOTAL NÓMINA ANUAL: ${total_anual:,.2f}")
             colR2.metric("Total Plantilla", f"{total_personas}")
+
+            st.markdown("#### Totales fiscales de planta")
+            colF1, colF2, colF3, colF4 = st.columns(4)
+            colF1.metric("ISR Retenido / mes (informativo)", fmt(total_isr_mes))
+            colF2.metric("ISR Retenido / año (informativo)", fmt(total_isr_anual))
+            colF3.metric("IMSS Patronal / mes", fmt(total_imss_pat_mes))
+            colF4.metric("IMSS Patronal / año", fmt(total_imss_pat_anual))
         else:
             st.warning("⚠️ Ingresa al menos 1 trabajador.")
 
